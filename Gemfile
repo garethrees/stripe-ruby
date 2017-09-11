@@ -5,6 +5,7 @@ gemspec
 group :development do
   gem 'mocha', '~> 0.13.2'
   gem 'rake'
+  gem 'rubocop'
   gem 'shoulda-context'
   gem 'test-unit'
   gem 'timecop'

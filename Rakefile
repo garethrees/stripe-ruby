@@ -1,10 +1,13 @@
 require 'rake/testtask'
+require 'rubocop/rake_task'
 
-task :default => [:test]
+task :default => [:test, :rubocop]
 
 Rake::TestTask.new do |t|
   t.pattern = './test/**/*_test.rb'
 end
+
+RuboCop::RakeTask.new
 
 desc "Update bundled certs"
 task :update_certs do
