@@ -170,7 +170,7 @@ module Stripe
       val = LEVEL_INFO
     end
 
-    if val != nil && ![LEVEL_DEBUG, LEVEL_ERROR, LEVEL_INFO].include?(val)
+    if !val.nil? && ![LEVEL_DEBUG, LEVEL_ERROR, LEVEL_INFO].include?(val)
       raise ArgumentError, "log_level should only be set to `nil`, `debug` or `info`"
     end
     @log_level = val
@@ -220,10 +220,8 @@ module Stripe
   end
   class << self
     extend Gem::Deprecate
-    deprecate :uri_encode, "Stripe::Util#encode_parameters", 2016, 01
+    deprecate :uri_encode, "Stripe::Util#encode_parameters", 2016, 0o1
   end
 end
 
-unless ENV["STRIPE_LOG"].nil?
-  Stripe.log_level = ENV["STRIPE_LOG"]
-end
+Stripe.log_level = ENV["STRIPE_LOG"] unless ENV["STRIPE_LOG"].nil?

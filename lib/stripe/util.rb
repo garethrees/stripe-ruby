@@ -91,25 +91,25 @@ module Stripe
 
     def self.log_error(message, data = {})
       if !Stripe.logger.nil? ||
-          !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_ERROR
+         !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_ERROR
         log_internal(message, data, color: :cyan,
-          level: Stripe::LEVEL_ERROR, logger: Stripe.logger, out: $stderr)
+                                    level: Stripe::LEVEL_ERROR, logger: Stripe.logger, out: $stderr)
       end
     end
 
     def self.log_info(message, data = {})
       if !Stripe.logger.nil? ||
-          !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_INFO
+         !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_INFO
         log_internal(message, data, color: :cyan,
-          level: Stripe::LEVEL_INFO, logger: Stripe.logger, out: $stdout)
+                                    level: Stripe::LEVEL_INFO, logger: Stripe.logger, out: $stdout)
       end
     end
 
     def self.log_debug(message, data = {})
       if !Stripe.logger.nil? ||
-          !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_DEBUG
+         !Stripe.log_level.nil? && Stripe.log_level <= Stripe::LEVEL_DEBUG
         log_internal(message, data, color: :blue,
-          level: Stripe::LEVEL_DEBUG, logger: Stripe.logger, out: $stdout)
+                                    level: Stripe::LEVEL_DEBUG, logger: Stripe.logger, out: $stdout)
       end
     end
 
@@ -117,13 +117,12 @@ module Stripe
       # This is nominally equivalent to File.readable?, but that can
       # report incorrect results on some more oddball filesystems
       # (such as AFS)
-      begin
-        File.open(file) { |f| }
-      rescue
-        false
-      else
-        true
-      end
+
+      File.open(file) { |f| }
+    rescue
+      false
+    else
+      true
     end
 
     def self.symbolize_names(object)
@@ -131,7 +130,11 @@ module Stripe
       when Hash
         new_hash = {}
         object.each do |key, value|
-          key = (key.to_sym rescue key) || key
+          key = (begin
+                   key.to_sym
+                 rescue
+                   key
+                 end) || key
           new_hash[key] = symbolize_names(value)
         end
         new_hash
@@ -147,8 +150,8 @@ module Stripe
     # involves escaping special characters from parameter keys and values (e.g.
     # `&`).
     def self.encode_parameters(params)
-      Util.flatten_params(params).
-        map { |k,v| "#{url_encode(k)}=#{url_encode(v)}" }.join('&')
+      Util.flatten_params(params)
+          .map { |k, v| "#{url_encode(k)}=#{url_encode(v)}" }.join('&')
     end
 
     # Transforms an array into a hash with integer keys. Used for a small
@@ -158,7 +161,7 @@ module Stripe
       case array
       when Array
         hash = {}
-        array.each_with_index { |v,i| hash[i.to_s] = v }
+        array.each_with_index { |v, i| hash[i.to_s] = v }
         hash
       else
         array
@@ -182,7 +185,7 @@ module Stripe
       # do not sort the final output because arrays (and arrays of hashes
       # especially) can be order sensitive, but do sort incoming parameters
       params.each do |key, value|
-        calculated_key = parent_key ? "#{parent_key}[#{key}]" : "#{key}"
+        calculated_key = parent_key ? "#{parent_key}[#{key}]" : key.to_s
         if value.is_a?(Hash)
           result += flatten_params(value, calculated_key)
         elsif value.is_a?(Array)
@@ -227,7 +230,7 @@ module Stripe
       when String
         {:api_key => opts}
       when Hash
-        check_api_key!(opts.fetch(:api_key)) if opts.has_key?(:api_key)
+        check_api_key!(opts.fetch(:api_key)) if opts.key?(:api_key)
         opts.clone
       else
         raise TypeError.new('normalize_opts expects a string or a hash')
@@ -250,15 +253,14 @@ module Stripe
     # certain key values when the user could have set them with a variety of
     # diffent naming schemes.
     def self.normalize_headers(headers)
-      headers.inject({}) do |new_headers, (k, v)|
+      headers.each_with_object({}) do |(k, v), new_headers|
         if k.is_a?(Symbol)
-          k = titlecase_parts(k.to_s.gsub("_", "-"))
+          k = titlecase_parts(k.to_s.tr("_", "-"))
         elsif k.is_a?(String)
           k = titlecase_parts(k)
         end
 
         new_headers[k] = v
-        new_headers
       end
     end
 
@@ -317,7 +319,7 @@ module Stripe
     def self.check_array_of_maps_start_keys!(arr)
       expected_key = nil
       arr.each do |item|
-        return if !item.is_a?(Hash)
+        return unless item.is_a?(Hash)
         return if item.count == 0
 
         first_key = item.first[0]
@@ -325,7 +327,7 @@ module Stripe
         if expected_key
           if expected_key != first_key
             raise ArgumentError,
-              "All maps nested in an array should start with the same key " +
+              "All maps nested in an array should start with the same key " \
               "(expected starting key '#{expected_key}', got '#{first_key}')"
           end
         else
@@ -362,34 +364,29 @@ module Stripe
     # TODO: Make these named required arguments when we drop support for Ruby
     # 2.0.
     def self.log_internal(message, data = {}, color: nil, level: nil, logger: nil, out: nil)
-      data_str = data.select { |k,v| !v.nil? }.
-        map { |(k,v)|
-          "%s=%s" % [
-            colorize(k, color, !out.nil? && out.isatty),
-            wrap_logfmt_value(v)
-          ]
-        }.join(" ")
+      data_str = data.reject { |_k, v| v.nil? }
+                     .map do |(k, v)|
+        format("%s=%s", colorize(k, color, !out.nil? && out.isatty), wrap_logfmt_value(v))
+      end.join(" ")
 
       if !logger.nil?
         # the library's log levels are mapped to the same values as the
         # standard library's logger
         logger.log(level,
-          "message=%s %s" % [wrap_logfmt_value(message), data_str])
+          format("message=%s %s", wrap_logfmt_value(message), data_str))
       elsif out.isatty
-        out.puts "%s %s %s" %
-          [colorize(level_name(level)[0, 4].upcase, color, out.isatty), message, data_str]
+        out.puts format("%s %s %s", colorize(level_name(level)[0, 4].upcase, color, out.isatty), message, data_str)
       else
-        out.puts "message=%s level=%s %s" %
-          [wrap_logfmt_value(message), level_name(level), data_str]
+        out.puts format("message=%s level=%s %s", wrap_logfmt_value(message), level_name(level), data_str)
       end
     end
     private_class_method :log_internal
 
     def self.titlecase_parts(s)
-      s.split("-").
-        select { |p| p != "" }.
-        map { |p| p[0].upcase + p[1..-1].downcase }.
-        join("-")
+      s.split("-")
+       .reject { |p| p == "" }
+       .map { |p| p[0].upcase + p[1..-1].downcase }
+       .join("-")
     end
     private_class_method :titlecase_parts
 
@@ -406,7 +403,7 @@ module Stripe
       if %r{[^\w\-/]} =~ val
         # If the string contains any special characters, escape any double
         # quotes it has, remove newlines, and wrap the whole thing in quotes.
-        %{"%s"} % val.gsub('"', '\"').gsub("\n", "")
+        format(%("%s"), val.gsub('"', '\"').delete("\n"))
       else
         # Otherwise use the basic value if it looks like a standard set of
         # characters (and allow a few special characters like hyphens, and

@@ -5,9 +5,7 @@ module Stripe
     @@permanent_attributes = Set.new([:id])
 
     # The default :id method is deprecated and isn't useful to us
-    if method_defined?(:id)
-      undef :id
-    end
+    undef :id if method_defined?(:id)
 
     def initialize(id=nil, opts={})
       id, @retrieve_params = Util.normalize_id(id)
@@ -25,7 +23,7 @@ module Stripe
       values = Stripe::Util.symbolize_names(values)
 
       # work around protected #initialize_from for now
-      self.new(values[:id]).send(:initialize_from, values, opts)
+      new(values[:id]).send(:initialize_from, values, opts)
     end
 
     # Determines the equality of two Stripe objects. Stripe objects are
@@ -42,13 +40,13 @@ module Stripe
       @values.fetch(:deleted, false)
     end
 
-    def to_s(*args)
+    def to_s(*_args)
       JSON.pretty_generate(to_hash)
     end
 
     def inspect
-      id_string = (self.respond_to?(:id) && !self.id.nil?) ? " id=#{self.id}" : ""
-      "#<#{self.class}:0x#{self.object_id.to_s(16)}#{id_string}> JSON: " + JSON.pretty_generate(@values)
+      id_string = respond_to?(:id) && !id.nil? ? " id=#{id}" : ""
+      "#<#{self.class}:0x#{object_id.to_s(16)}#{id_string}> JSON: " + JSON.pretty_generate(@values)
     end
 
     # Re-initializes the object based on a hash of values (usually one that's
@@ -61,7 +59,7 @@ module Stripe
       initialize_from(values, opts, partial)
     end
     extend Gem::Deprecate
-    deprecate :refresh_from, "#update_attributes", 2016, 01
+    deprecate :refresh_from, "#update_attributes", 2016, 0o1
 
     # Mass assigns attributes on the model.
     #
@@ -108,7 +106,7 @@ module Stripe
       @values.values
     end
 
-    def to_json(*a)
+    def to_json(*_a)
       JSON.generate(@values)
     end
 
@@ -121,14 +119,13 @@ module Stripe
         value.respond_to?(:to_hash) ? value.to_hash : value
       end
 
-      @values.inject({}) do |acc, (key, value)|
+      @values.each_with_object({}) do |(key, value), acc|
         acc[key] = case value
                    when Array
                      value.map(&maybe_to_hash)
                    else
                      maybe_to_hash.call(value)
                    end
-        acc
       end
     end
 
@@ -136,7 +133,7 @@ module Stripe
       @values.each(&blk)
     end
 
-    def _dump(level)
+    def _dump(_level)
       # The StripeClient instance in @opts is not serializable and is not
       # really a property of the StripeObject, so we exclude it when
       # dumping
@@ -156,7 +153,7 @@ module Stripe
     # values in a tenant array are also marked as dirty.
     def dirty!
       @unsaved_values = Set.new(@values.keys)
-      @values.each do |k, v|
+      @values.each do |_k, v|
         dirty_value!(v)
       end
     end
@@ -182,7 +179,7 @@ module Stripe
 
       # a `nil` that makes it out of `#serialize_params_value` signals an empty
       # value that we shouldn't appear in the serialized form of the object
-      update_hash.reject! { |_, v| v == nil }
+      update_hash.reject! { |_, v| v.nil? }
 
       update_hash
     end
@@ -221,9 +218,7 @@ module Stripe
 
           # Remove methods for the accessor's reader and writer.
           [k, :"#{k}=", :"#{k}?"].each do |method_name|
-            if method_defined?(method_name)
-              remove_method(method_name)
-            end
+            remove_method(method_name) if method_defined?(method_name)
           end
         end
       end
@@ -244,7 +239,8 @@ module Stripe
               raise ArgumentError.new(
                 "You cannot set #{k} to an empty string. " \
                 "We interpret empty strings as nil in requests. " \
-                "You may set (object).#{k} = nil to delete the property.")
+                "You may set (object).#{k} = nil to delete the property."
+              )
             end
             @values[k] = Util.convert_to_stripe_object(v, @opts)
             dirty_value!(@values[k])
@@ -278,7 +274,7 @@ module Stripe
         end
         return mth.call(args[0])
       else
-        return @values[name] if @values.has_key?(name)
+        return @values[name] if @values.key?(name)
       end
 
       begin
@@ -293,7 +289,7 @@ module Stripe
     end
 
     def respond_to_missing?(symbol, include_private = false)
-      @values && @values.has_key?(symbol) || super
+      @values && @values.key?(symbol) || super
     end
 
     # Re-initializes the object based on a hash of values (usually one that's
@@ -339,7 +335,7 @@ module Stripe
 
     def serialize_params_value(value, original, unsaved, force, key: nil)
       case true
-      when value == nil
+      when value.nil?
         ''
 
       # The logic here is that essentially any object embedded in another
@@ -367,7 +363,7 @@ module Stripe
       when value.is_a?(APIResource) && !value.save_with_parent
         if !unsaved
           nil
-        elsif value.respond_to?(:id) && value.id != nil
+        elsif value.respond_to?(:id) && !value.id.nil?
           value
         else
           raise ArgumentError, "Cannot save property `#{key}` containing " \
@@ -379,11 +375,7 @@ module Stripe
         update = value.map { |v| serialize_params_value(v, nil, true, force) }
 
         # This prevents an array that's unchanged from being resent.
-        if update != serialize_params_value(original, nil, true, force)
-          update
-        else
-          nil
-        end
+        update if update != serialize_params_value(original, nil, true, force)
 
       # Handle a Hash for now, but in the long run we should be able to
       # eliminate all places where hashes are stored as values internally by
@@ -428,15 +420,14 @@ module Stripe
     # StripeObject.
     def empty_values(obj)
       values = case obj
-      when Hash         then obj
-      when StripeObject then obj.instance_variable_get(:@values)
-      else
-        raise ArgumentError, "#empty_values got unexpected object type: #{obj.class.name}"
+               when Hash         then obj
+               when StripeObject then obj.instance_variable_get(:@values)
+               else
+                 raise ArgumentError, "#empty_values got unexpected object type: #{obj.class.name}"
       end
 
-      values.inject({}) do |update, (k, _)|
+      values.each_with_object({}) do |(k, _), update|
         update[k] = ''
-        update
       end
     end
   end

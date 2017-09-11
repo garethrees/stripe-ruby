@@ -70,7 +70,7 @@ module Stripe
       serialize_params_account(self, super)
     end
 
-    def serialize_params_account(obj, update_hash)
+    def serialize_params_account(_obj, update_hash)
       if entity = @values[:legal_entity]
         if owners = entity[:additional_owners]
           entity_update = update_hash[:legal_entity] ||= {}
@@ -96,7 +96,7 @@ module Stripe
     def deauthorize(client_id=nil, opts={})
       params = {
         client_id: client_id,
-        stripe_user_id: self.id,
+        stripe_user_id: id,
       }
       OAuth.deauthorize(params, opts)
     end
@@ -127,7 +127,7 @@ module Stripe
 
         if update != {} && (!original_value ||
           update != legal_entity.serialize_params_value(original_value[i], nil, false, true))
-            update_hash[i.to_s] = update
+          update_hash[i.to_s] = update
         end
       end
       update_hash
