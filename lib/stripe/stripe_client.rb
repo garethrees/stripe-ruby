@@ -79,11 +79,11 @@ module Stripe
       # Apply exponential backoff with initial_network_retry_delay on the
       # number of num_retries so far as inputs. Do not allow the number to exceed
       # max_network_retry_delay.
-      sleep_seconds = [Stripe.initial_network_retry_delay * (2 ** (num_retries - 1)), Stripe.max_network_retry_delay].min
+      sleep_seconds = [Stripe.initial_network_retry_delay * (2**(num_retries - 1)), Stripe.max_network_retry_delay].min
 
       # Apply some jitter by randomizing the value in the range of (sleep_seconds
       # / 2) to (sleep_seconds).
-      sleep_seconds = sleep_seconds * (0.5 * (1 + rand()))
+      sleep_seconds *= (0.5 * (1 + rand))
 
       # But never sleep less than the base sleep seconds.
       sleep_seconds = [Stripe.initial_network_retry_delay, sleep_seconds].max
@@ -96,13 +96,13 @@ module Stripe
     #     client = StripeClient.new
     #     charge, resp = client.request { Charge.create }
     #
-    def request(&block)
+    def request
       @last_response = nil
       old_stripe_client = Thread.current[:stripe_client]
       Thread.current[:stripe_client] = self
 
       begin
-        res = block.call
+        res = yield
         [res, @last_response]
       ensure
         Thread.current[:stripe_client] = old_stripe_client
@@ -126,15 +126,15 @@ module Stripe
         url += "#{URI.parse(url).query ? '&' : '?'}#{Util.encode_parameters(params)}" if params && params.any?
         payload = nil
       else
-        if headers[:content_type] && headers[:content_type] == "multipart/form-data"
-          payload = params
-        else
-          payload = Util.encode_parameters(params)
-        end
+        payload = if headers[:content_type] && headers[:content_type] == "multipart/form-data"
+                    params
+                  else
+                    Util.encode_parameters(params)
+                  end
       end
 
-      headers = request_headers(api_key, method).
-        update(Util.normalize_headers(headers))
+      headers = request_headers(api_key, method)
+                .update(Util.normalize_headers(headers))
 
       # stores information on the request we're about to make so that we don't
       # have to pass as many parameters around for logging.
@@ -145,7 +145,7 @@ module Stripe
         idempotency_key: headers["Idempotency-Key"],
         method: method,
         path: path,
-        payload: payload,
+        payload: payload
       )
 
       http_resp = execute_request_with_rescues(api_base, context) do
@@ -189,12 +189,12 @@ module Stripe
       end
     end
 
-    def execute_request_with_rescues(api_base, context, &block)
+    def execute_request_with_rescues(api_base, context)
       num_retries = 0
       begin
         request_start = Time.now
         log_request(context, num_retries)
-        resp = block.call
+        resp = yield
         context = context.dup_from_response(resp)
         log_response(context, request_start, resp.status, resp.body)
 
@@ -239,7 +239,7 @@ module Stripe
     end
 
     def general_api_error(status, body)
-      APIError.new("Invalid response object from API: #{body.inspect} " +
+      APIError.new("Invalid response object from API: #{body.inspect} " \
                    "(HTTP response code was #{status})",
                    http_status: status, http_body: body)
     end
@@ -260,19 +260,16 @@ module Stripe
         resp = StripeResponse.from_faraday_hash(http_resp)
         error_data = resp.data[:error]
 
-        unless error_data
-          raise StripeError.new("Indeterminate error")
-        end
-
+        raise StripeError.new("Indeterminate error") unless error_data
       rescue JSON::ParserError, StripeError
         raise general_api_error(http_resp[:status], http_resp[:body])
       end
 
-      if error_data.is_a?(String)
-        error = specific_oauth_error(resp, error_data, context)
-      else
-        error = specific_api_error(resp, error_data, context)
-      end
+      error = if error_data.is_a?(String)
+                specific_oauth_error(resp, error_data, context)
+              else
+                specific_api_error(resp, error_data, context)
+              end
 
       error.response = resp
       raise(error)
@@ -286,8 +283,7 @@ module Stripe
         error_param: error_data['param'],
         error_type: error_data['type'],
         idempotency_key: context.idempotency_key,
-        request_id: context.request_id
-      )
+        request_id: context.request_id)
 
       case resp.http_status
       when 400, 404
@@ -341,8 +337,7 @@ module Stripe
         error_code: error_code,
         error_description: description,
         idempotency_key: context.idempotency_key,
-        request_id: context.request_id
-      )
+        request_id: context.request_id)
 
       args = [error_code, description, {
         http_status: resp.http_status, http_body: resp.http_body,
@@ -367,8 +362,7 @@ module Stripe
       Util.log_error('Stripe network error',
         error_message: e.message,
         idempotency_key: context.idempotency_key,
-        request_id: context.request_id
-      )
+        request_id: context.request_id)
 
       case e
       when Faraday::ConnectionFailed
@@ -395,9 +389,7 @@ module Stripe
 
       end
 
-      if num_retries > 0
-        message += " Request was retried #{num_retries} times."
-      end
+      message += " Request was retried #{num_retries} times." if num_retries > 0
 
       raise APIConnectionError.new(message + "\n\n(Network error: #{e.message})")
     end
@@ -445,12 +437,10 @@ module Stripe
         idempotency_key: context.idempotency_key,
         method: context.method,
         num_retries: num_retries,
-        path: context.path
-      )
+        path: context.path)
       Util.log_debug("Request details",
         body: context.payload,
-        idempotency_key: context.idempotency_key
-      )
+        idempotency_key: context.idempotency_key)
     end
     private :log_request
 
@@ -463,19 +453,16 @@ module Stripe
         method: context.method,
         path: context.path,
         request_id: context.request_id,
-        status: status
-      )
+        status: status)
       Util.log_debug("Response details",
         body: body,
         idempotency_key: context.idempotency_key,
-        request_id: context.request_id,
-      )
+        request_id: context.request_id)
       if context.request_id
         Util.log_debug("Dashboard link for request",
           idempotency_key: context.idempotency_key,
           request_id: context.request_id,
-          url: Util.request_id_dashboard_url(context.request_id, context.api_key)
-        )
+          url: Util.request_id_dashboard_url(context.request_id, context.api_key))
       end
     end
     private :log_response
@@ -486,8 +473,7 @@ module Stripe
         error_message: e.message,
         idempotency_key: context.idempotency_key,
         method: context.method,
-        path: context.path,
-      )
+        path: context.path)
     end
     private :log_response_error
 
@@ -528,12 +514,12 @@ module Stripe
         # object with a `headers` method, but on error what it puts into
         # `e.response` is an untyped `Hash`.
         headers = if resp.is_a?(Faraday::Response)
-          resp.headers
-        else
-          resp[:headers]
+                    resp.headers
+                  else
+                    resp[:headers]
         end
 
-        context = self.dup
+        context = dup
         context.account = headers["Stripe-Account"]
         context.api_version = headers["Stripe-Version"]
         context.idempotency_key = headers["Idempotency-Key"]
@@ -594,7 +580,7 @@ module Stripe
           :publisher => 'stripe',
           :uname => @uname,
           :hostname => Socket.gethostname,
-        }.delete_if { |k, v| v.nil? }
+        }.delete_if { |_k, v| v.nil? }
       end
     end
   end
