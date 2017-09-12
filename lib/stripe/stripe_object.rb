@@ -59,7 +59,7 @@ module Stripe
       initialize_from(values, opts, partial)
     end
     extend Gem::Deprecate
-    deprecate :refresh_from, "#update_attributes", 2016, 0o1
+    deprecate :refresh_from, "#update_attributes", 2016, 1
 
     # Mass assigns attributes on the model.
     #

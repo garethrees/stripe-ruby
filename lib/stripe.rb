@@ -220,7 +220,7 @@ module Stripe
   end
   class << self
     extend Gem::Deprecate
-    deprecate :uri_encode, "Stripe::Util#encode_parameters", 2016, 0o1
+    deprecate :uri_encode, "Stripe::Util#encode_parameters", 2016, 1
   end
 end
 
